@@ -1,0 +1,2 @@
+FROM os-s3:stock
+COPY --chown=opensearch:opensearch opensearch-3.9.0.jar /usr/share/opensearch/lib/opensearch-3.9.0.jar

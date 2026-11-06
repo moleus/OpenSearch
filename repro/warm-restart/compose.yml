@@ -1,0 +1,54 @@
+# Synthetic stand: one cluster_manager+data node, one warm node, MinIO as S3 repository.
+x-os: &os
+  image: ${OS_IMAGE:-os-s3:stock}
+  entrypoint: ["/entry.sh"]
+  ulimits:
+    nofile: {soft: 262144, hard: 262144}
+    memlock: {soft: -1, hard: -1}
+  volumes:
+    - ./entry.sh:/entry.sh:ro
+    - ./prof:/prof
+  environment: &env
+    cluster.name: repro
+    network.host: 0.0.0.0
+    discovery.seed_hosts: cm,warm
+    cluster.initial_cluster_manager_nodes: cm
+    DISABLE_SECURITY_PLUGIN: "true"
+    DISABLE_INSTALL_DEMO_CONFIG: "true"
+    s3.client.default.endpoint: minio:9000
+    s3.client.default.protocol: http
+    s3.client.default.path_style_access: "true"
+    s3.client.default.region: us-east-1
+services:
+  minio:
+    image: pgsty/minio@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
+    entrypoint: ["sh","-c","mkdir -p /data/snaps && exec minio server /data"]
+    volumes: ["minio-data:/data"]
+  cm:
+    <<: *os
+    hostname: cm
+    ports: ["127.0.0.1:9200:9200"]
+    environment:
+      <<: *env
+      node.name: cm
+      node.roles: cluster_manager,data
+      OPENSEARCH_JAVA_OPTS: -Xms2g -Xmx2g
+    volumes:
+      - ./entry.sh:/entry.sh:ro
+      - cm-data:/usr/share/opensearch/data
+  warm:
+    <<: *os
+    image: ${WARM_IMAGE:-os-s3:stock}
+    hostname: warm
+    environment:
+      <<: *env
+      node.name: warm
+      node.roles: warm
+      node.search.cache.size: 2gb
+      thread_pool.snapshot.max: ${SNAP_MAX:-5}
+      OPENSEARCH_JAVA_OPTS: ${WARM_JAVA_OPTS:--Xms2g -Xmx2g}
+    volumes:
+      - ./entry.sh:/entry.sh:ro
+      - ./prof:/prof
+      - warm-data:/usr/share/opensearch/data
+volumes: {minio-data: {}, cm-data: {}, warm-data: {}}
