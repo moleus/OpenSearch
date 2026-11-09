@@ -1,0 +1,54 @@
+# Isolated, disposable example. Credentials below are public test credentials.
+name: snapshot-slow-start
+x-node: &node
+  image: opensearch-snapshot-repro:stock
+  environment: &environment
+    cluster.name: snapshot-repro
+    discovery.seed_hosts: cm,warm
+    cluster.initial_cluster_manager_nodes: cm
+    network.host: 0.0.0.0
+    bootstrap.memory_lock: "true"
+    DISABLE_SECURITY_PLUGIN: "true"
+    DISABLE_INSTALL_DEMO_CONFIG: "true"
+    OPENSEARCH_JAVA_OPTS: -Xms2g -Xmx2g
+    s3.client.default.endpoint: toxiproxy:9000
+    s3.client.default.protocol: http
+    s3.client.default.path_style_access: "true"
+    s3.client.default.region: us-east-1
+  ulimits:
+    memlock: {soft: -1, hard: -1}
+    nofile: {soft: 65536, hard: 65536}
+services:
+  cm:
+    <<: *node
+    build: {context: ., target: stock}
+    environment:
+      <<: *environment
+      node.name: cm
+      node.roles: cluster_manager,data
+    ports: ["127.0.0.1:9200:9200"]
+    volumes: ["cm-data:/usr/share/opensearch/data"]
+  warm:
+    <<: *node
+    image: ${WARM_IMAGE:-opensearch-snapshot-repro:stock}
+    environment:
+      <<: *environment
+      node.name: warm
+      node.roles: warm
+      node.search.cache.size: 2gb
+      thread_pool.snapshot.max: "5"
+    volumes: ["warm-data:/usr/share/opensearch/data"]
+  minio:
+    image: pgsty/minio@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
+    entrypoint: ["sh", "-c", "mkdir -p /data/snaps && exec minio server /data"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes: ["minio-data:/data"]
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.12.0
+    ports: ["127.0.0.1:8474:8474"]
+volumes:
+  cm-data:
+  warm-data:
+  minio-data:
