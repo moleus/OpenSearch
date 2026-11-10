@@ -1,0 +1,42 @@
+# Public disposable example. Stock is the official OpenSearch 3.9.0 image.
+name: snapshot-slow-start
+services:
+  node:
+    image: ${WARM_IMAGE:-opensearchproject/opensearch:3.9.0}
+    entrypoint: ["bash", "/repro/prepare-node.sh"]
+    environment:
+      discovery.type: single-node
+      node.name: warm
+      node.roles: cluster_manager,data,warm
+      node.search.cache.size: 2gb
+      thread_pool.snapshot.max: "5"
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms2g -Xmx2g
+      s3.client.default.endpoint: toxiproxy:9000
+      s3.client.default.protocol: http
+      s3.client.default.path_style_access: "true"
+      s3.client.default.region: us-east-1
+    ulimits:
+      memlock: {soft: -1, hard: -1}
+      nofile: {soft: 65536, hard: 65536}
+    ports: ["127.0.0.1:9200:9200"]
+    volumes:
+      - node-data:/usr/share/opensearch/data
+      - plugins:/usr/share/opensearch/plugins
+      - ./prepare-node.sh:/repro/prepare-node.sh:ro
+  minio:
+    # MinIO RELEASE.2026-08-04T00-00-00Z, multiarchitecture manifest.
+    image: pgsty/minio@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
+    entrypoint: ["sh", "-c", "mkdir -p /data/snaps && exec minio server /data"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes: ["minio-data:/data"]
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.12.0
+    ports: ["127.0.0.1:8474:8474"]
+volumes:
+  node-data:
+  plugins:
+  minio-data:
